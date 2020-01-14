@@ -8,7 +8,6 @@ import "C"
 
 import (
 	"io"
-	"sync"
 	"unsafe"
 )
 
@@ -16,20 +15,15 @@ const maxSamplesPerFrame = 1152 * 2
 
 // Decoder decode the mp3 stream by minimp3
 type Decoder struct {
-	sync.Mutex
-	source               io.ReadCloser
+	source               io.Reader
 	mp3, pcm             []byte
 	mp3Length, pcmLength int
 	lastError            error
 	decode               C.mp3dec_t
 	info                 C.mp3dec_frame_info_t
-	SampleRate           int
-	Channels             int
-	Kbps                 int
-	Layer                int
 }
 
-func NewDecoder(source io.ReadCloser) (*Decoder, error) {
+func NewDecoder(source io.Reader) *Decoder {
 	d := &Decoder{
 		source: source,
 		mp3:    make([]byte, 1024*16),
@@ -37,14 +31,10 @@ func NewDecoder(source io.ReadCloser) (*Decoder, error) {
 	}
 
 	C.mp3dec_init(&d.decode)
-	_, err := d.Read([]byte{})
-	return d, err
+	return d
 }
 
 func (d *Decoder) Read(p []byte) (int, error) {
-	d.Lock()
-	defer d.Unlock()
-
 	var n, n2, n3 int
 	for {
 		n3 = copy(p[n:], d.pcm[:d.pcmLength])
@@ -72,18 +62,18 @@ func (d *Decoder) Read(p []byte) (int, error) {
 
 		d.mp3Length = copy(d.mp3, d.mp3[d.info.frame_bytes:d.mp3Length])
 		d.pcmLength = int(samples*d.info.channels) * 2
-
-		d.SampleRate = int(d.info.hz)
-		d.Channels = int(d.info.channels)
-		d.Kbps = int(d.info.bitrate_kbps)
-		d.Layer = int(d.info.layer)
 	}
 }
 
-func (d *Decoder) Close() error {
-	d.Lock()
-	defer d.Unlock()
+func (d *Decoder) Info() (SampleRate, Channels, Kbps, Layer int) {
+	SampleRate = int(d.info.hz)
+	Channels = int(d.info.channels)
+	Kbps = int(d.info.bitrate_kbps)
+	Layer = int(d.info.layer)
+	return
+}
+
+func (d *Decoder) Reset() {
 	d.mp3Length = 0
 	d.pcmLength = 0
-	return d.source.Close()
 }
