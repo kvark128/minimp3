@@ -19,6 +19,7 @@ type Decoder struct {
 	mp3, pcm             []byte
 	mp3Length, pcmLength int
 	lastError            error
+	samples              C.int
 	decode               C.mp3dec_t
 	info                 C.mp3dec_frame_info_t
 }
@@ -51,7 +52,7 @@ func (d *Decoder) Read(p []byte) (int, error) {
 			d.mp3Length += n2
 		}
 
-		samples := C.mp3dec_decode_frame(&d.decode,
+		d.samples = C.mp3dec_decode_frame(&d.decode,
 			(*C.uint8_t)(unsafe.Pointer(&d.mp3[0])), C.int(d.mp3Length),
 			(*C.mp3d_sample_t)(unsafe.Pointer(&d.pcm[0])), &d.info,
 		)
@@ -61,8 +62,30 @@ func (d *Decoder) Read(p []byte) (int, error) {
 		}
 
 		d.mp3Length = copy(d.mp3, d.mp3[d.info.frame_bytes:d.mp3Length])
-		d.pcmLength = int(samples*d.info.channels) * 2
+		d.pcmLength = int(d.samples*d.info.channels) * 2
 	}
+}
+
+func (d *Decoder) Seek(offset int64, whence int) (int64, error) {
+	seeker, ok := d.source.(io.Seeker)
+	if !ok {
+		panic("minimp3: d.source is not seeker")
+	}
+
+	bytesPerFrame := int64(d.samples * d.info.channels * 2)
+	mp3Offset := offset / bytesPerFrame * int64(d.info.frame_bytes)
+	if whence == io.SeekCurrent {
+		mp3Offset -= int64(d.mp3Length)
+	}
+
+	mp3Pos, err := seeker.Seek(mp3Offset, whence)
+	if err != nil {
+		return 0, err
+	}
+
+	d.Reset()
+	pcmPos := mp3Pos / int64(d.info.frame_bytes) * bytesPerFrame
+	return pcmPos, nil
 }
 
 func (d *Decoder) Info() (SampleRate, Channels, Kbps, Layer int) {
