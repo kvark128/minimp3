@@ -7,6 +7,7 @@ package minimp3
 import "C"
 
 import (
+	"errors"
 	"io"
 	"unsafe"
 )
@@ -73,6 +74,10 @@ func (d *Decoder) Seek(offset int64, whence int) (int64, error) {
 	}
 
 	bytesPerFrame := int64(d.samples * d.info.channels * 2)
+	if bytesPerFrame == 0 {
+		return 0, errors.New("no frame available")
+	}
+
 	mp3Offset := offset / bytesPerFrame * int64(d.info.frame_bytes)
 	if whence == io.SeekCurrent {
 		mp3Offset -= int64(d.mp3Length)
