@@ -93,11 +93,13 @@ func (d *Decoder) Seek(offset int64, whence int) (int64, error) {
 	return pcmPos, nil
 }
 
-func (d *Decoder) Info() (SampleRate, Channels, Kbps, Layer int) {
+func (d *Decoder) LastFrameInfo() (SampleRate, Channels, Kbps, Layer, FrameSize, Samples int) {
 	SampleRate = int(d.info.hz)
 	Channels = int(d.info.channels)
 	Kbps = int(d.info.bitrate_kbps)
 	Layer = int(d.info.layer)
+	FrameSize = int(d.info.frame_bytes)
+	Samples = int(d.samples)
 	return
 }
 
