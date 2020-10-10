@@ -37,20 +37,19 @@ func NewDecoder(source io.Reader) *Decoder {
 }
 
 func (d *Decoder) Read(p []byte) (int, error) {
-	var n, n2, n3 int
+	var n, nRead int
 	for {
-		n3 = copy(p[n:], d.pcm[:d.pcmLength])
-		n += n3
-
-		if n3 < d.pcmLength {
+		nCopy := copy(p[n:], d.pcm[:d.pcmLength])
+		n += nCopy
+		if n == len(p) {
 			// The p is full
-			d.pcmLength = copy(d.pcm, d.pcm[n3:d.pcmLength])
+			d.pcmLength = copy(d.pcm, d.pcm[nCopy:d.pcmLength])
 			return n, nil
 		}
 
-		if d.lastError == nil {
-			n2, d.lastError = d.source.Read(d.mp3[d.mp3Length:])
-			d.mp3Length += n2
+		for d.mp3Length < len(d.mp3) && d.lastError == nil {
+			nRead, d.lastError = d.source.Read(d.mp3[d.mp3Length:])
+			d.mp3Length += nRead
 		}
 
 		d.samples = C.mp3dec_decode_frame(&d.decode,
