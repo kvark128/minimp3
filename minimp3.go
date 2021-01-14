@@ -29,7 +29,7 @@ func NewDecoder(source io.Reader) *Decoder {
 	d := &Decoder{
 		source: source,
 		mp3:    make([]byte, 1024*16),
-		pcm:    make([]byte, maxSamplesPerFrame*2),
+		pcm:    make([]byte, maxSamplesPerFrame*C.sizeof_short),
 	}
 
 	C.mp3dec_init(&d.decode)
@@ -37,17 +37,14 @@ func NewDecoder(source io.Reader) *Decoder {
 }
 
 func (d *Decoder) Read(p []byte) (int, error) {
-	var n, nRead int
-	for {
-		nCopy := copy(p[n:], d.pcm[:d.pcmLength])
-		n += nCopy
-		if n == len(p) {
-			// The p is full
-			d.pcmLength = copy(d.pcm, d.pcm[nCopy:d.pcmLength])
-			return n, nil
-		}
+	if len(p) == 0 {
+		return 0, nil
+	}
 
+	for d.pcmLength == 0 {
+		// If possible, fill the mp3 buffer completely
 		for d.mp3Length < len(d.mp3) && d.lastError == nil {
+			var nRead int
 			nRead, d.lastError = d.source.Read(d.mp3[d.mp3Length:])
 			d.mp3Length += nRead
 		}
@@ -58,12 +55,18 @@ func (d *Decoder) Read(p []byte) (int, error) {
 		)
 
 		if d.info.frame_bytes == 0 {
-			return n, d.lastError
+			return 0, d.lastError
 		}
 
 		d.mp3Length = copy(d.mp3, d.mp3[d.info.frame_bytes:d.mp3Length])
-		d.pcmLength = int(d.samples*d.info.channels) * 2
+		d.pcmLength = int(d.samples * d.info.channels * C.sizeof_short)
 	}
+
+	n := copy(p, d.pcm[:d.pcmLength])
+	// If there is any data left in the pcm buffer, then move it to the beginning of the buffer
+	copy(d.pcm, d.pcm[n:d.pcmLength])
+	d.pcmLength -= n
+	return n, nil
 }
 
 func (d *Decoder) Seek(offset int64, whence int) (int64, error) {
@@ -72,7 +75,7 @@ func (d *Decoder) Seek(offset int64, whence int) (int64, error) {
 		panic("minimp3: d.source is not seeker")
 	}
 
-	bytesPerFrame := int64(d.samples * d.info.channels * 2)
+	bytesPerFrame := int64(d.samples * d.info.channels * C.sizeof_short)
 	if bytesPerFrame == 0 {
 		return 0, errors.New("no frame available")
 	}
