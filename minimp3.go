@@ -85,12 +85,14 @@ func (d *Decoder) Seek(offset int64, whence int) (int64, error) {
 		mp3Offset -= int64(d.mp3Length)
 	}
 
+	// Internal buffers must always be cleared, regardless of the result of calling the Seek method
+	d.Reset()
+
 	mp3Pos, err := seeker.Seek(mp3Offset, whence)
 	if err != nil {
 		return 0, err
 	}
 
-	d.Reset()
 	pcmPos := mp3Pos / int64(d.info.frame_bytes) * bytesPerFrame
 	return pcmPos, nil
 }
